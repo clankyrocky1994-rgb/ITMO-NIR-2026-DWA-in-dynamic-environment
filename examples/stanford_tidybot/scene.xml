@@ -1,0 +1,134 @@
+<mujoco model="tidybot scene">
+  <include file="tidybot.xml"/>
+
+  <statistic center="0.25 0 0.6" extent="8.0" meansize="0.05"/>
+
+  <visual>
+    <headlight diffuse="0.6 0.6 0.6" ambient="0.1 0.1 0.1" specular="0 0 0"/>
+    <rgba haze="0.15 0.25 0.35 1"/>
+    <global azimuth="120" elevation="-20"/>
+  </visual>
+
+  <asset>
+    <texture type="skybox" builtin="gradient"
+             rgb1="0.3 0.5 0.7" rgb2="0 0 0"
+             width="512" height="3072"/>
+    <texture type="2d" name="groundplane" builtin="checker" mark="edge"
+             rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3"
+             markrgb="0.8 0.8 0.8" width="300" height="300"/>
+    <material name="groundplane" texture="groundplane"
+              texuniform="true" texrepeat="5 5" reflectance="0.2"/>
+
+    <material name="shelf_mat" rgba="0.65 0.65 0.70 1"/>
+    <material name="wall_mat" rgba="0.2 0.2 0.2 1"/>
+  </asset>
+
+  <worldbody>
+    <light pos="0 0 3.0" directional="true"/>
+
+    <!-- Floor -->
+    <geom name="floor" size="0 0 0.05" type="plane" material="groundplane"/>
+
+    <!-- Mocap target used by the examples (keep this!) -->
+    <body name="pinch_site_target" pos="0.5 0 0.5" quat="0 1 0 0" mocap="true">
+      <geom type="box" size="0.05 0.05 0.05" contype="0" conaffinity="0" rgba="0.6 0.3 0.3 0.2"/>
+    </body>
+
+ <body name="cabinet_near_tray" pos="2.55 -3.8 0">
+      <!-- main body (low) -->
+      <geom type="box"
+            pos="0 0 0.18"
+            size="0.32 0.24 0.18"
+            rgba="0.68 0.60 0.50 1"/>
+      <!-- thin rim to suggest "tray" -->
+      <geom type="box"
+            pos="0 0 0.38"
+            size="0.33 0.25 0.02"
+            rgba="0.50 0.44 0.36 1"/>
+    </body>
+ <body name="shaft_1" pos="2.55 -3.8 0.42" quat="0.70710678 0.70710678 0 0">
+  <joint name="shaft_x" type="slide" axis="1 0 0"  damping="0.2"/>
+  <joint name="shaft_y" type="slide" axis="0 1 0"  damping="0.2"/>
+  <joint name="shaft_z" type="slide" axis="0 0 1"  damping="0.2"/>
+  <joint name="shaft_ball" type="ball" damping="0.05"/>
+
+  <!-- cylinder: size="radius half_length" -->
+  <geom name="shaft_1_geom" type="box"
+        size="0.025 0.025 0.11"
+        rgba="0.25 0.25 0.25 1"
+        density="700"
+        friction="1 0.01 0.001"/>
+</body>
+
+
+    <!-- =====================================================
+         CABINET 2 (FAR, left side, end of shelves)
+         Simple pedestal
+         ===================================================== -->
+
+    <body name="cabinet_far_left" pos="-2.55 6.2 0">
+      <geom type="box"
+            pos="0 0 0.275"
+            size="0.30 0.225 0.275"
+            rgba="0.70 0.62 0.50 1"/>
+      <geom type="box"
+            pos="0 0 0.565"
+            size="0.31 0.235 0.015"
+            rgba="0.55 0.48 0.38 1"/>
+    </body>
+
+    <!-- =========================
+         WAREHOUSE: 8 shelves (2 rows x 4), facing each other
+         Shelf dimensions (meters):
+           depth  = 0.50  (along X)
+           length = 1.80  (along Y)
+           height = 2.20  (along Z)
+
+         Passages:
+           central aisle free width ≈ 1.20 m  (between shelf faces)
+           side gaps (between shelves along Y) ≈ 1.00 m
+         ========================= -->
+
+    <!-- Shelves are boxes: size is half-extents -->
+    <!-- half-depth=0.25, half-length=0.90, half-height=1.10 -->
+    <!-- Place shelf centers at z=1.10 so they stand on the floor -->
+
+    <!-- X centers: ±(aisle/2 + depth/2) = ±(0.60 + 0.25) = ±0.85 -->
+    <!-- Y positions (step = length + gap = 1.80 + 1.00 = 2.80): -4.2, -1.4, 1.4, 4.2 -->
+
+    <!-- Left row -->
+    <body name="shelf_L1" pos="-0.85 -4.2 1.10">
+      <geom type="box" size="0.25 0.90 1.10" material="shelf_mat"/>
+    </body>
+    <body name="shelf_L2" pos="-0.85 -1.4 1.10">
+      <geom type="box" size="0.25 0.90 1.10" material="shelf_mat"/>
+    </body>
+    <body name="shelf_L3" pos="-0.85 1.4 1.10">
+      <geom type="box" size="0.25 0.90 1.10" material="shelf_mat"/>
+    </body>
+    <body name="shelf_L4" pos="-0.85 4.2 1.10">
+      <geom type="box" size="0.25 0.90 1.10" material="shelf_mat"/>
+    </body>
+
+    <!-- Right row -->
+    <body name="shelf_R1" pos="0.85 -4.2 1.10">
+      <geom type="box" size="0.25 0.90 1.10" material="shelf_mat"/>
+    </body>
+    <body name="shelf_R2" pos="0.85 -1.4 1.10">
+      <geom type="box" size="0.25 0.90 1.10" material="shelf_mat"/>
+    </body>
+    <body name="shelf_R3" pos="0.85 1.4 1.10">
+      <geom type="box" size="0.25 0.90 1.10" material="shelf_mat"/>
+    </body>
+    <body name="shelf_R4" pos="0.85 4.2 1.10">
+      <geom type="box" size="0.25 0.90 1.10" material="shelf_mat"/>
+    </body>
+
+    <!-- Optional: boundary walls to keep robot "inside the warehouse" -->
+    <geom name="wall_n" type="box" pos="0 7.2 1.0" size="5.0 0.10 1.0" material="wall_mat"/>
+    <geom name="wall_s" type="box" pos="0 -7.2 1.0" size="5.0 0.10 1.0" material="wall_mat"/>
+    <geom name="wall_e" type="box" pos="3.2 0 1.0" size="0.10 7.2 1.0" material="wall_mat"/>
+    <geom name="wall_w" type="box" pos="-3.2 0 1.0" size="0.10 7.2 1.0" material="wall_mat"/>
+
+  </worldbody>
+</mujoco>
