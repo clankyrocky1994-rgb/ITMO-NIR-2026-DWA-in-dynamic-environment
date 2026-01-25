@@ -12,6 +12,34 @@ from mink.contrib.keyboard_teleop import keycodes
 _HERE = Path(__file__).parent
 _XML = _HERE / "stanford_tidybot" / "scene.xml"
 
+from enum import Enum, auto
+
+class State(Enum):
+    GO_TO_PICK = auto()
+    REACH = auto()
+    GRASP = auto()
+    LIFT = auto()
+    GO_TO_PLACE = auto()
+    PLACE = auto()
+    RELEASE = auto()
+    DONE = auto()
+
+def wrap_pi(a: float) -> float:
+    return (a + np.pi) % (2*np.pi) - np.pi
+
+def get_shaft_xyz(model, data) -> np.ndarray:
+    ax = model.joint("shaft_x").qposadr[0]
+    ay = model.joint("shaft_y").qposadr[0]
+    az = model.joint("shaft_z").qposadr[0]
+    geom_id = model.geom("shaft_1_geom").id
+    return data.geom_xpos[geom_id].copy()
+
+def set_mocap_target(model, data, mocap_body_name: str, xyz: np.ndarray, quat=(0, 1, 0, 0)) -> None:
+    mocap_id = model.body(mocap_body_name).mocapid[0]
+    data.mocap_pos[mocap_id] = xyz
+    data.mocap_quat[mocap_id] = np.array(quat, dtype=float)
+
+
 
 @dataclass
 class KeyCallback:
