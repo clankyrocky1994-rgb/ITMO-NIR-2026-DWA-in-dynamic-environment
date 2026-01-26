@@ -11,10 +11,12 @@ from mink.contrib.keyboard_teleop import keycodes
 
 from Astar import AStarGridPlanner
 
+from YawPath import YawAligner
+
 _HERE = Path(__file__).parent
 _XML = _HERE / "stanford_tidybot" / "scene.xml"
 
-GOAL1 = np.array([2.55, -3.8, 0.62])   # тумбочка-лоток справа (Z подстрой)
+GOAL1 = np.array([2.55, -5, 0.62])   # тумбочка-лоток справа (Z подстрой)
 GOAL2 = np.array([-2.55, 6.2, 0.62])   # тумбочка слева (Z подстрой)
 
 
@@ -56,6 +58,8 @@ planner.build_grid()
 path_xy = []
 path_idx = 0
 
+yaw_aligner = YawAligner(start_on_last_k=2)
+
 if __name__ == "__main__":
     model = mujoco.MjModel.from_xml_path(_XML.as_posix())
     data = mujoco.MjData(model)
@@ -71,6 +75,9 @@ if __name__ == "__main__":
     # fmt: on
     dof_ids = np.array([model.joint(name).id for name in joint_names])
     actuator_ids = np.array([model.actuator(name).id for name in joint_names])
+    joint_th_act = model.actuator("joint_th").id
+    
+
 
     configuration = mink.Configuration(model)
 
@@ -145,6 +152,7 @@ if __name__ == "__main__":
                 else:
                     path_xy = planner.simplify_path(planned, step=2)
                     path_idx = 0
+                    yaw_aligner.update_from_path(path_xy)
                     print(f"✅ New path: {len(path_xy)} waypoints")
 
                 key_callback.goal = 0
@@ -174,6 +182,8 @@ if __name__ == "__main__":
 
 
             # Compute velocity and integrate into the next configuration.
+            configuration.update(data.qpos)
+           
             for i in range(max_iters):
                 if key_callback.fix_base:
                     vel = mink.solve_ik(
@@ -196,8 +206,16 @@ if __name__ == "__main__":
                 if pos_achieved and ori_achieved:
                     break
 
-            if not key_callback.pause:
-                data.ctrl[actuator_ids] = configuration.q[dof_ids]
+                if not key_callback.pause:
+                    data.ctrl[actuator_ids] = configuration.q[dof_ids]
+
+                    # 🔥 поверх mink — задаём yaw базы напрямую
+                    if yaw_aligner.should_apply(path_idx, len(path_xy)) and yaw_aligner.desired_yaw is not None:
+                        data.ctrl[joint_th_act] = yaw_aligner.desired_yaw
+
+                    mujoco.mj_step(model, data)
+                if yaw_aligner.should_apply(path_idx, len(path_xy)):
+                    print("apply yaw:", yaw_aligner.desired_yaw, " current th:", float(data.qpos[2]))
                 mujoco.mj_step(model, data)
             else:
                 mujoco.mj_forward(model, data)
