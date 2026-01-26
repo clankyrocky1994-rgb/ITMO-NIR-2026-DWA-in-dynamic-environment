@@ -183,8 +183,8 @@ if __name__ == "__main__":
 
         pick_xy = None
         place_xy = None
-        pick_xy = [2.55, -3.8]
-        stoppick = [GOAL1.copy]
+        pick_xy = [2.57, -3.8]
+        prepick = [2.3, -4.62]
         Z_PRE = 0.75      # высота "подойти сверху"
         Z_CARRY = 0.6  # как у тебя
 
@@ -226,7 +226,7 @@ if __name__ == "__main__":
             elif cycle_state == CycleState.ARM_PREPICK:
                 data.ctrl[fingers_id] = GRIP_OPEN
                 cur = data.mocap_pos[mocap_id].copy()
-                target = np.array([2.45, -4.63, Z_PRE], dtype=float)  # подойти сверху
+                target = np.array([prepick[0], prepick[1], Z_PRE], dtype=float)  # подойти сверху
                 delta = target - cur
                 dist = float(np.linalg.norm(delta))
                 step = 0.45 * float(model.opt.timestep)
@@ -242,7 +242,7 @@ if __name__ == "__main__":
             elif cycle_state == CycleState.ARM_DOWN_PICK:
                 data.ctrl[fingers_id] = GRIP_OPEN
                 cur = data.mocap_pos[mocap_id].copy()
-                target = np.array([pick_xy[0], pick_xy[1], 0.44], dtype=float)  # только Z вниз
+                target = np.array([pick_xy[0], pick_xy[1], 0.45], dtype=float)  # только Z вниз
                 delta = target - cur
                 dist = float(np.linalg.norm(delta))
                 step = 0.30 * float(model.opt.timestep)
@@ -266,7 +266,7 @@ if __name__ == "__main__":
             elif cycle_state == CycleState.ARM_UP:
                 data.ctrl[fingers_id] = GRIP_CLOSED
                 cur = data.mocap_pos[mocap_id].copy()
-                target = np.array([GOAL1[0], GOAL1[1], Z_CARRY], dtype=float)
+                target = np.array([prepick[0],prepick[1], Z_CARRY], dtype=float)
                 delta = target - cur
                 dist = float(np.linalg.norm(delta))
                 step = 0.45 * float(model.opt.timestep)
