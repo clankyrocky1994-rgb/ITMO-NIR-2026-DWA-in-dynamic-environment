@@ -368,7 +368,7 @@ if __name__ == "__main__":
                     path_xy = planner.simplify_path(planned, step=2)
                     path_idx = 0
                     yaw_aligner.update_from_path(path_xy)
-                    print(f"✅ New path: {len(path_xy)} waypoints")
+                    print(f" New path: {len(path_xy)} waypoints")
 
                 key_callback.goal = 0
             nav_allowed = cycle_state in (CycleState.NAV_TO_PICK, CycleState.NAV_TO_PLACE, CycleState.NAV_HOME)
@@ -383,7 +383,7 @@ if __name__ == "__main__":
                 delta = target - cur
                 dist = float(np.linalg.norm(delta))
 
-                mocap_speed = 2  # м/с (плавность)
+                mocap_speed = 2  # м/с 
                 dt = float(model.opt.timestep)
                 step = mocap_speed * dt
 
@@ -423,7 +423,7 @@ if __name__ == "__main__":
                 if not key_callback.pause:
                     data.ctrl[actuator_ids] = configuration.q[dof_ids]
 
-                    # 🔥 поверх mink — задаём yaw базы напрямую
+                    
                     if yaw_aligner.should_apply(path_idx, len(path_xy)) and yaw_aligner.desired_yaw is not None:
                         data.ctrl[joint_th_act] = yaw_aligner.desired_yaw
 
