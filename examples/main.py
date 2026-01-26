@@ -18,12 +18,12 @@ from enum import Enum, auto
 class CycleState(Enum):
     IDLE = auto()
     NAV_TO_PICK = auto()
-    ARM_PREPICK = auto()      # <-- новое (подойти сверху)
+    ARM_PREPICK = auto()      
     ARM_DOWN_PICK = auto()
     CLOSE = auto()
     ARM_UP = auto()
     NAV_TO_PLACE = auto()
-    ARM_PREPLACE = auto()     # <-- новое (подойти сверху)
+    ARM_PREPLACE = auto()     
     ARM_DOWN_PLACE = auto()
     OPEN = auto()
     DONE = auto()
@@ -34,13 +34,13 @@ class CycleState(Enum):
 _HERE = Path(__file__).parent
 _XML = _HERE / "stanford_tidybot" / "scene.xml"
 
-GOAL1 = np.array([2.55, -4.5, 0.62])   # тумбочка-лоток справа (Z подстрой)
-GOAL2 = np.array([-2.55, 6, 0.62])   # тумбочка слева (Z подстрой)
+goal1 = np.array([2.55, -4.5, 0.62]) 
+goal2 = np.array([-2.55, 6, 0.62])   
 
-HOME_XY = np.array([-2.4, -6.0])     # поставь куда хочешь (например старт) 
+HOME_XY = np.array([-2.4, -6.0])     
 
-PICK_Z = float() # опускание в лоток 1
-PLACE_Z = float()# опускание в лоток 2
+pick_z = float() 
+place_z = float()
 
 
 @dataclass
@@ -64,7 +64,7 @@ class KeyCallback:
         elif key == keycodes.KEY_4:
             self.cycle = True
 
-
+# Создание сетки а*
 planner = AStarGridPlanner(
     x_min=-3.0, x_max=3.0,
     y_min=-7.0, y_max=7.0,
@@ -90,8 +90,8 @@ planner.build_grid()
 
 path_xy = []
 path_idx = 0
-Path_Yawning = 100
-yaw_aligner = YawAligner(start_on_last_k=Path_Yawning)
+path_yawnning = 100
+yaw_aligner = YawAligner(start_on_last_k=path_yawnning)
 
 if __name__ == "__main__":
     model = mujoco.MjModel.from_xml_path(_XML.as_posix())
@@ -117,10 +117,8 @@ if __name__ == "__main__":
     cycle_state = CycleState.IDLE
     hold_counter = 0
     
-    Z_CARRY = .6          # высота, на которой ты сейчас возишь кубик
-    PICK_Z = float(GOAL1[2]) # опускание в лоток 1
-    PLACE_Z = float(GOAL2[2])# опускание в лоток 2
-
+    Z_CARRY = .6         
+   
     configuration = mink.Configuration(model)
 
     end_effector_task = mink.FrameTask(
@@ -172,27 +170,24 @@ if __name__ == "__main__":
 
         # Initialize the mocap target at the end-effector site.
         mink.move_mocap_to_frame(model, data, "pinch_site_target", "pinch_site", "site")
-        # reset позы робота
+        # reset 
         mujoco.mj_resetDataKeyframe(model, data, model.key("home").id)
         mujoco.mj_forward(model, data)
 
         configuration.update(data.qpos)
         posture_task.set_target_from_configuration(configuration)
 
-        # поставить mocap ровно на хват
-        mink.move_mocap_to_frame(model, data, "pinch_site_target", "pinch_site", "site")
 
-        # ещё раз "протащить" кинематику после изменения mocap
+        mink.move_mocap_to_frame(model, data, "pinch_site_target", "pinch_site", "site")
         mujoco.mj_forward(model, data)
 
         pick_xy = None
         place_xy = None
         pick_xy = [2.57, -3.8]
         prepick = [2.3, -4.62]
-        Z_PRE = 0.75      # высота "подойти сверху"
-        Z_CARRY = 0.6  # как у тебя
+        Z_PRE = 0.75      
+        Z_CARRY = 0.6  
 
-        # и сразу зафиксировать цель IK по этому mocap
         T_wt = mink.SE3.from_mocap_name(model, data, "pinch_site_target")
         end_effector_task.set_target(T_wt)
         rate = RateLimiter(frequency=200.0, warn=False)
@@ -211,8 +206,8 @@ if __name__ == "__main__":
                 
                 key_callback.goal = 1
 
-            # ====== FSM core (поверх твоей навигации) ======
-            # 1) Навигация к лотку 1: ждём пока путь закончится
+            # ====== FSM core  ======
+
 
             if cycle_state in (
                 CycleState.ARM_PREPICK, CycleState.ARM_DOWN_PICK, CycleState.CLOSE,
@@ -226,7 +221,7 @@ if __name__ == "__main__":
             if cycle_state == CycleState.NAV_TO_PICK:
                 data.ctrl[fingers_id] = GRIP_OPEN
                 if path_idx >= len(path_xy) and len(path_xy) > 0:
-                    # фиксируем XY там, где реально остановились
+                    
                     cur = data.mocap_pos[mocap_id].copy()
                     cycle_state = CycleState.ARM_PREPICK
 
@@ -234,7 +229,7 @@ if __name__ == "__main__":
             elif cycle_state == CycleState.ARM_PREPICK:
                 data.ctrl[fingers_id] = GRIP_OPEN
                 cur = data.mocap_pos[mocap_id].copy()
-                target = np.array([prepick[0], prepick[1], Z_PRE], dtype=float)  # подойти сверху
+                target = np.array([prepick[0], prepick[1], Z_PRE], dtype=float)  
                 delta = target - cur
                 dist = float(np.linalg.norm(delta))
                 step = 0.45 * float(model.opt.timestep)
@@ -246,11 +241,11 @@ if __name__ == "__main__":
                     data.mocap_pos[mocap_id] = cur + (delta / (dist + 1e-9)) * min(step, dist)
 
 
-            # 2) Опускаем mocap на PICK_Z (рука тянется вниз)
+            
             elif cycle_state == CycleState.ARM_DOWN_PICK:
                 data.ctrl[fingers_id] = GRIP_OPEN
                 cur = data.mocap_pos[mocap_id].copy()
-                target = np.array([pick_xy[0], pick_xy[1], 0.45], dtype=float)  # только Z вниз
+                target = np.array([pick_xy[0], pick_xy[1], 0.45], dtype=float)  
                 delta = target - cur
                 dist = float(np.linalg.norm(delta))
                 step = float(model.opt.timestep)
@@ -263,14 +258,14 @@ if __name__ == "__main__":
                     data.mocap_pos[mocap_id] = cur + (delta / (dist + 1e-9)) * min(step, dist)
 
 
-            # 3) Закрываем пальцы и держим
+            
             elif cycle_state == CycleState.CLOSE:
                 data.ctrl[fingers_id] = GRIP_CLOSED
                 hold_counter += 1
-                if hold_counter > 60:     # ~0.3 сек на 200 Гц
+                if hold_counter > 60:    
                     cycle_state = CycleState.ARM_UP
 
-            # 4) Поднимаем mocap обратно на Z_CARRY
+            
             elif cycle_state == CycleState.ARM_UP:
                 data.ctrl[fingers_id] = GRIP_CLOSED
                 cur = data.mocap_pos[mocap_id].copy()
@@ -287,7 +282,6 @@ if __name__ == "__main__":
                 else:
                     data.mocap_pos[mocap_id] = cur + (delta / (dist + 1e-9)) * min(step, dist)
 
-            # 5) Навигация к лотку 2: ждём пока путь закончится
             elif cycle_state == CycleState.NAV_TO_PLACE:
                 data.ctrl[fingers_id] = GRIP_CLOSED
                 if path_idx >= len(path_xy) and len(path_xy) > 0:
@@ -309,7 +303,6 @@ if __name__ == "__main__":
                     data.mocap_pos[mocap_id] = cur + (delta / (dist + 1e-9)) * min(step, dist)
 
 
-            # 6) Опускаем mocap на PLACE_Z
             elif cycle_state == CycleState.ARM_DOWN_PLACE:
                 data.ctrl[fingers_id] = GRIP_CLOSED
                 cur = data.mocap_pos[mocap_id].copy()
@@ -324,7 +317,6 @@ if __name__ == "__main__":
                     hold_counter = 0
                 else:
                     data.mocap_pos[mocap_id] = cur + (delta / (dist + 1e-9)) * min(step, dist)
-            # 7) Открываем пальцы
             elif cycle_state == CycleState.OPEN:
                 data.ctrl[fingers_id] = GRIP_OPEN
                 hold_counter += 1
@@ -333,15 +325,14 @@ if __name__ == "__main__":
                     hold_counter = 0
             
             elif cycle_state == CycleState.ARM_UP_AFTER_PLACE:
-                # поднять руку обратно наверх перед поездкой домой
                 data.ctrl[fingers_id] = GRIP_OPEN
                 cur = data.mocap_pos[mocap_id].copy()
-                target = np.array([GOAL2[0], GOAL2[1], .7], dtype=float)  # или HOME_Z
+                target = np.array([goal2[0], goal2[1], .7], dtype=float)  # или HOME_Z
                 delta = target - cur
                 dist = float(np.linalg.norm(delta))
                 step = 0.45 * float(model.opt.timestep)
 
-                if dist < 0.000003:
+                if dist < 0.03:
                     data.mocap_pos[mocap_id] = target
                     cycle_state = CycleState.NAV_HOME
                     key_callback.goal = 3   # будем использовать goal=3 как "домой"
@@ -355,7 +346,6 @@ if __name__ == "__main__":
                     cycle_state = CycleState.HOME_DONE
 
             elif cycle_state == CycleState.HOME_DONE:
-                # завершили полный цикл
                 cycle_state = CycleState.DONE
                 key_callback.fix_base = False
 
@@ -363,9 +353,9 @@ if __name__ == "__main__":
                 start_xy = data.qpos[:2].copy()
 
                 if key_callback.goal == 1:
-                    goal_xy = GOAL1[:2].copy()
+                    goal_xy = goal1[:2].copy()
                 elif key_callback.goal == 2:
-                    goal_xy = GOAL2[:2].copy()
+                    goal_xy = goal2[:2].copy()
                 else:  # 3
                     goal_xy = HOME_XY.copy()
 
@@ -383,13 +373,13 @@ if __name__ == "__main__":
                 key_callback.goal = 0
             nav_allowed = cycle_state in (CycleState.NAV_TO_PICK, CycleState.NAV_TO_PLACE, CycleState.NAV_HOME)
 
-            # 2) если путь есть — двигаем mocap маленькими шагами к текущей точке
+            # Алгоритм навигации A*
             if nav_allowed and path_idx < len(path_xy):
                 key_callback.fix_base = False
                 wp = path_xy[path_idx]
                 cur = data.mocap_pos[mocap_id].copy()
 
-                target = np.array([wp[0], wp[1], 0.9], dtype=float)  # высота кубика
+                target = np.array([wp[0], wp[1], 0.9], dtype=float)  
                 delta = target - cur
                 dist = float(np.linalg.norm(delta))
 
@@ -398,14 +388,11 @@ if __name__ == "__main__":
                 step = mocap_speed * dt
 
                 if dist < 0.20:
-                    # дошли до waypoint -> следующий
                     path_idx += 1
-                else:
-                    # двигаем кубик в сторону waypoint
+                else: 
                     cur = cur + (delta / (dist + 1e-9)) * min(step, dist)
                     data.mocap_pos[mocap_id] = cur
                     data.mocap_quat[mocap_id] = np.array([0, 1, 0, 0], dtype=float)
-# ============================================================
 
 
             # Compute velocity and integrate into the next configuration.
