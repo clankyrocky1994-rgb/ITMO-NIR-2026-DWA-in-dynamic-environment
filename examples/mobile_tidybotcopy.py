@@ -289,7 +289,7 @@ if __name__ == "__main__":
             elif cycle_state == CycleState.ARM_PREPLACE:
                 data.ctrl[fingers_id] = GRIP_CLOSED
                 cur = data.mocap_pos[mocap_id].copy()
-                target = np.array([-2.55, 6.2, 0.6], dtype=float)
+                target = np.array([-2.55, 6.2, 0.7], dtype=float)
                 delta = target - cur
                 dist = float(np.linalg.norm(delta))
                 step = 0.45 * float(model.opt.timestep)
@@ -305,7 +305,7 @@ if __name__ == "__main__":
             elif cycle_state == CycleState.ARM_DOWN_PLACE:
                 data.ctrl[fingers_id] = GRIP_CLOSED
                 cur = data.mocap_pos[mocap_id].copy()
-                target = np.array([-2.25, 6.0, 0.565], dtype=float)
+                target = np.array([-2.55, 6.2, 0.6], dtype=float)
                 delta = target - cur
                 dist = float(np.linalg.norm(delta))
                 step = 0.30 * float(model.opt.timestep)
