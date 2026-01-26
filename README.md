@@ -14,6 +14,10 @@ uv add mink
 ```
 pip install -r requirements.txt
 ```
+Для запуска программы 
+```
+uv run examples/main.py
+```
 ### демо (ускорено)
 ![clideo_editor_bd366ccfdb29432ab10663702b2fcb17-ezgif com-resize](https://github.com/user-attachments/assets/56714745-ee09-4d3b-8cac-e2027e2f7104)
 
