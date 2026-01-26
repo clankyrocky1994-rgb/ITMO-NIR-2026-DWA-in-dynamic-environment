@@ -120,8 +120,6 @@ if __name__ == "__main__":
     Z_CARRY = .6          # высота, на которой ты сейчас возишь кубик
     PICK_Z = float(GOAL1[2]) # опускание в лоток 1
     PLACE_Z = float(GOAL2[2])# опускание в лоток 2
-    
-
 
     configuration = mink.Configuration(model)
 
@@ -206,6 +204,7 @@ if __name__ == "__main__":
             mocap_id = model.body("pinch_site_target").mocapid[0]
 
             if key_callback.cycle and cycle_state in (CycleState.IDLE, CycleState.DONE):
+                key_callback.fix_base = False
                 cycle_state = CycleState.NAV_TO_PICK
                 hold_counter = 0
                 key_callback.cycle = False
@@ -337,12 +336,12 @@ if __name__ == "__main__":
                 # поднять руку обратно наверх перед поездкой домой
                 data.ctrl[fingers_id] = GRIP_OPEN
                 cur = data.mocap_pos[mocap_id].copy()
-                target = np.array([-2.55, 6.2, .7], dtype=float)  # или HOME_Z
+                target = np.array([GOAL2[0], GOAL2[1], .7], dtype=float)  # или HOME_Z
                 delta = target - cur
                 dist = float(np.linalg.norm(delta))
                 step = 0.45 * float(model.opt.timestep)
 
-                if dist < 0.003:
+                if dist < 0.000003:
                     data.mocap_pos[mocap_id] = target
                     cycle_state = CycleState.NAV_HOME
                     key_callback.goal = 3   # будем использовать goal=3 как "домой"
@@ -355,17 +354,11 @@ if __name__ == "__main__":
                 if path_idx >= len(path_xy) and len(path_xy) > 0:
                     cycle_state = CycleState.HOME_DONE
 
-
             elif cycle_state == CycleState.HOME_DONE:
                 # завершили полный цикл
                 cycle_state = CycleState.DONE
                 key_callback.fix_base = False
 
-
-    
-
-
-            # 1) если нажали кнопку — строим новый путь
             if key_callback.goal in (1, 2, 3):
                 start_xy = data.qpos[:2].copy()
 
@@ -388,9 +381,11 @@ if __name__ == "__main__":
                     print(f"✅ New path: {len(path_xy)} waypoints")
 
                 key_callback.goal = 0
+            nav_allowed = cycle_state in (CycleState.NAV_TO_PICK, CycleState.NAV_TO_PLACE, CycleState.NAV_HOME)
 
             # 2) если путь есть — двигаем mocap маленькими шагами к текущей точке
-            if path_idx < len(path_xy):
+            if nav_allowed and path_idx < len(path_xy):
+                key_callback.fix_base = False
                 wp = path_xy[path_idx]
                 cur = data.mocap_pos[mocap_id].copy()
 
@@ -446,7 +441,8 @@ if __name__ == "__main__":
                         data.ctrl[joint_th_act] = yaw_aligner.desired_yaw
 
                     mujoco.mj_step(model, data)
-                if yaw_aligner.should_apply(path_idx, len(path_xy)):
+                if yaw_aligner.desired_yaw is not None and len(path_xy) >= 2:
+                    data.ctrl[joint_th_act] = yaw_aligner.desired_yaw
                     print("apply yaw:", yaw_aligner.desired_yaw, " current th:", float(data.qpos[2]))
                 mujoco.mj_step(model, data)
             else:

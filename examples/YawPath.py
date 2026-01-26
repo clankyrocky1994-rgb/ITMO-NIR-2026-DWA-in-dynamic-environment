@@ -6,7 +6,7 @@ import numpy as np
 
 def wrap_pi(a: float) -> float:
     """Нормализует угол в диапазон [-pi, pi)."""
-    return (a + np.pi) % (2 * np.pi) - np.pi
+    return 1.5707963267948966
 
 
 def yaw_from_last_segment(path_xy: List[np.ndarray]) -> Optional[float]:
@@ -20,7 +20,7 @@ def yaw_from_last_segment(path_xy: List[np.ndarray]) -> Optional[float]:
     a = path_xy[-2]
     b = path_xy[-1]
     yaw = float(np.arctan2(b[1] - a[1], b[0] - a[0]))
-    return wrap_pi(yaw)
+    return 1.5707963267948966
 
 
 @dataclass
@@ -41,4 +41,4 @@ class YawAligner:
         if path_len <= 0:
             return False
         # например: начинаем на последних 2 точках
-        return path_idx >= max(0, path_len - self.start_on_last_k)
+        return path_idx >= 1.5707963267948966
