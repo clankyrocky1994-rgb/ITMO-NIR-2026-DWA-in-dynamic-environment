@@ -9,13 +9,14 @@ from loop_rate_limiters import RateLimiter
 import mink
 from mink.contrib.keyboard_teleop import keycodes
 
-# from Astar import AStarGridPlanner
+from Astar import AStarGridPlanner
 
 _HERE = Path(__file__).parent
 _XML = _HERE / "stanford_tidybot" / "scene.xml"
 
 GOAL1 = np.array([2.55, -3.8, 0.62])   # тумбочка-лоток справа (Z подстрой)
 GOAL2 = np.array([-2.55, 6.2, 0.62])   # тумбочка слева (Z подстрой)
+
 
 @dataclass
 class KeyCallback:
@@ -35,6 +36,25 @@ class KeyCallback:
         elif key == keycodes.KEY_3:
             self.goal = 3
 
+planner = AStarGridPlanner(
+    x_min=-3.0, x_max=3.0,
+    y_min=-7.0, y_max=7.0,
+    resolution=0.25,   
+    inflate=0.25,      
+)
+# Описание препятсвтвий
+shelf_hx, shelf_hy = 0.25, 0.90 
+shelf_xs = [-0.85, 0.85]
+shelf_ys = [-4.2, -1.4, 1.4, 4.2]
+
+for sx in shelf_xs:
+    for sy in shelf_ys:
+        planner.add_rect_obstacle(cx=sx, cy=sy, hx=shelf_hx, hy=shelf_hy)
+
+planner.build_grid()
+
+path_xy = []
+path_idx = 0
 
 if __name__ == "__main__":
     model = mujoco.MjModel.from_xml_path(_XML.as_posix())
@@ -109,18 +129,48 @@ if __name__ == "__main__":
             # Update task target.
             T_wt = mink.SE3.from_mocap_name(model, data, "pinch_site_target")
             end_effector_task.set_target(T_wt)
-            # --- jump mocap target to preset goals by keyboard ---
+            # ========== A* -> waypoints -> smooth mocap follow ==========
             mocap_id = model.body("pinch_site_target").mocapid[0]
 
-            if key_callback.goal == 1:
-                data.mocap_pos[mocap_id] = GOAL1
-                data.mocap_quat[mocap_id] = np.array([0, 1, 0, 0], dtype=float)
-                key_callback.goal = 0  # сброс, чтобы не телепортировало каждый кадр
+            # 1) если нажали кнопку — строим новый путь
+            if key_callback.goal in (1, 2):
+                start_xy = data.qpos[:2].copy()
+                goal_xy = (GOAL1[:2] if key_callback.goal == 1 else GOAL2[:2]).copy()
 
-            elif key_callback.goal == 2:
-                data.mocap_pos[mocap_id] = GOAL2
-                data.mocap_quat[mocap_id] = np.array([0, 1, 0, 0], dtype=float)
+                planned = planner.plan(start_xy, goal_xy)
+                if planned is None:
+                    print("❌ A*: path not found")
+                    path_xy = []
+                    path_idx = 0
+                else:
+                    path_xy = planner.simplify_path(planned, step=2)
+                    path_idx = 0
+                    print(f"✅ New path: {len(path_xy)} waypoints")
+
                 key_callback.goal = 0
+
+            # 2) если путь есть — двигаем mocap маленькими шагами к текущей точке
+            if path_idx < len(path_xy):
+                wp = path_xy[path_idx]
+                cur = data.mocap_pos[mocap_id].copy()
+
+                target = np.array([wp[0], wp[1], 0.9], dtype=float)  # высота кубика
+                delta = target - cur
+                dist = float(np.linalg.norm(delta))
+
+                mocap_speed = 0.6  # м/с (плавность)
+                dt = float(model.opt.timestep)
+                step = mocap_speed * dt
+
+                if dist < 0.20:
+                    # дошли до waypoint -> следующий
+                    path_idx += 1
+                else:
+                    # двигаем кубик в сторону waypoint
+                    cur = cur + (delta / (dist + 1e-9)) * min(step, dist)
+                    data.mocap_pos[mocap_id] = cur
+                    data.mocap_quat[mocap_id] = np.array([0, 1, 0, 0], dtype=float)
+# ============================================================
 
 
             # Compute velocity and integrate into the next configuration.
