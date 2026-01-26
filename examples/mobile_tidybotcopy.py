@@ -47,6 +47,8 @@ planner = AStarGridPlanner(
 # Описание препятсвтвий
 shelf_hx, shelf_hy = 0.25, 0.90 
 shelf_xs = [-0.85, 0.85]
+shelf_hx, shelf_hy = 0.28, 0.93 
+shelf_xs = [-0.88, 0.88]
 shelf_ys = [-4.2, -1.4, 1.4, 4.2]
 
 for sx in shelf_xs:
@@ -57,8 +59,8 @@ planner.build_grid()
 
 path_xy = []
 path_idx = 0
-
-yaw_aligner = YawAligner(start_on_last_k=2)
+Path_Yawning = 100
+yaw_aligner = YawAligner(start_on_last_k=Path_Yawning)
 
 if __name__ == "__main__":
     model = mujoco.MjModel.from_xml_path(_XML.as_posix())
