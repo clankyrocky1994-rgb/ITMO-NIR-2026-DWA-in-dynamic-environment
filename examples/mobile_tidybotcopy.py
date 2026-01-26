@@ -111,7 +111,7 @@ if __name__ == "__main__":
     cycle_state = CycleState.IDLE
     hold_counter = 0
     
-    Z_CARRY = .90          # высота, на которой ты сейчас возишь кубик
+    Z_CARRY = .6          # высота, на которой ты сейчас возишь кубик
     PICK_Z = float(GOAL1[2]) # опускание в лоток 1
     PLACE_Z = float(GOAL2[2])# опускание в лоток 2
     
@@ -184,8 +184,9 @@ if __name__ == "__main__":
         pick_xy = None
         place_xy = None
         pick_xy = [2.55, -3.8]
+        stoppick = [GOAL1.copy]
         Z_PRE = 0.75      # высота "подойти сверху"
-        Z_CARRY = 0.90    # как у тебя
+        Z_CARRY = 0.6  # как у тебя
 
         # и сразу зафиксировать цель IK по этому mocap
         T_wt = mink.SE3.from_mocap_name(model, data, "pinch_site_target")
@@ -225,7 +226,7 @@ if __name__ == "__main__":
             elif cycle_state == CycleState.ARM_PREPICK:
                 data.ctrl[fingers_id] = GRIP_OPEN
                 cur = data.mocap_pos[mocap_id].copy()
-                target = np.array([pick_xy[0], pick_xy[1], Z_PRE], dtype=float)  # подойти сверху
+                target = np.array([2.45, -4.63, Z_PRE], dtype=float)  # подойти сверху
                 delta = target - cur
                 dist = float(np.linalg.norm(delta))
                 step = 0.45 * float(model.opt.timestep)
@@ -265,7 +266,7 @@ if __name__ == "__main__":
             elif cycle_state == CycleState.ARM_UP:
                 data.ctrl[fingers_id] = GRIP_CLOSED
                 cur = data.mocap_pos[mocap_id].copy()
-                target = np.array([pick_xy[0], pick_xy[1], Z_CARRY], dtype=float)
+                target = np.array([GOAL1[0], GOAL1[1], Z_CARRY], dtype=float)
                 delta = target - cur
                 dist = float(np.linalg.norm(delta))
                 step = 0.45 * float(model.opt.timestep)
@@ -283,13 +284,12 @@ if __name__ == "__main__":
                 data.ctrl[fingers_id] = GRIP_CLOSED
                 if path_idx >= len(path_xy) and len(path_xy) > 0:
                     cur = data.mocap_pos[mocap_id].copy()
-                    place_xy = cur[:2].copy()
                     cycle_state = CycleState.ARM_PREPLACE
 
             elif cycle_state == CycleState.ARM_PREPLACE:
                 data.ctrl[fingers_id] = GRIP_CLOSED
                 cur = data.mocap_pos[mocap_id].copy()
-                target = np.array([place_xy[0], place_xy[1], Z_PRE], dtype=float)
+                target = np.array([-2.55, 6.2, 0.6], dtype=float)
                 delta = target - cur
                 dist = float(np.linalg.norm(delta))
                 step = 0.45 * float(model.opt.timestep)
@@ -305,7 +305,7 @@ if __name__ == "__main__":
             elif cycle_state == CycleState.ARM_DOWN_PLACE:
                 data.ctrl[fingers_id] = GRIP_CLOSED
                 cur = data.mocap_pos[mocap_id].copy()
-                target = np.array([place_xy[0], place_xy[1], PLACE_Z], dtype=float)
+                target = np.array([-2.25, 6.0, 0.565], dtype=float)
                 delta = target - cur
                 dist = float(np.linalg.norm(delta))
                 step = 0.30 * float(model.opt.timestep)
