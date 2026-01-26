@@ -27,12 +27,18 @@ class CycleState(Enum):
     ARM_DOWN_PLACE = auto()
     OPEN = auto()
     DONE = auto()
+    ARM_UP_AFTER_PLACE = auto()   
+    NAV_HOME = auto()             
+    HOME_DONE = auto()      
 
 _HERE = Path(__file__).parent
 _XML = _HERE / "stanford_tidybot" / "scene.xml"
 
 GOAL1 = np.array([2.55, -4.5, 0.62])   # тумбочка-лоток справа (Z подстрой)
 GOAL2 = np.array([-2.55, 6, 0.62])   # тумбочка слева (Z подстрой)
+
+HOME_XY = np.array([-2.4, -6.0])     # поставь куда хочешь (например старт) 
+
 PICK_Z = float() # опускание в лоток 1
 PLACE_Z = float()# опускание в лоток 2
 
@@ -209,8 +215,11 @@ if __name__ == "__main__":
             # ====== FSM core (поверх твоей навигации) ======
             # 1) Навигация к лотку 1: ждём пока путь закончится
 
-            if cycle_state in (CycleState.ARM_PREPICK, CycleState.ARM_DOWN_PICK, CycleState.CLOSE,
-                            CycleState.ARM_UP, CycleState.ARM_PREPLACE, CycleState.ARM_DOWN_PLACE, CycleState.OPEN):
+            if cycle_state in (
+                CycleState.ARM_PREPICK, CycleState.ARM_DOWN_PICK, CycleState.CLOSE,
+                CycleState.ARM_UP, CycleState.ARM_PREPLACE, CycleState.ARM_DOWN_PLACE,
+                CycleState.OPEN, CycleState.ARM_UP_AFTER_PLACE
+            ):
                 key_callback.fix_base = True
             else:
                 key_callback.fix_base = False
@@ -245,7 +254,7 @@ if __name__ == "__main__":
                 target = np.array([pick_xy[0], pick_xy[1], 0.45], dtype=float)  # только Z вниз
                 delta = target - cur
                 dist = float(np.linalg.norm(delta))
-                step = 0.30 * float(model.opt.timestep)
+                step = float(model.opt.timestep)
 
                 if dist < 0.02:
                     data.mocap_pos[mocap_id] = target
@@ -321,12 +330,51 @@ if __name__ == "__main__":
                 data.ctrl[fingers_id] = GRIP_OPEN
                 hold_counter += 1
                 if hold_counter > 40:
-                    cycle_state = CycleState.DONE
+                    cycle_state = CycleState.ARM_UP_AFTER_PLACE
+                    hold_counter = 0
+            
+            elif cycle_state == CycleState.ARM_UP_AFTER_PLACE:
+                # поднять руку обратно наверх перед поездкой домой
+                data.ctrl[fingers_id] = GRIP_OPEN
+                cur = data.mocap_pos[mocap_id].copy()
+                target = np.array([-2.55, 6.2, .7], dtype=float)  # или HOME_Z
+                delta = target - cur
+                dist = float(np.linalg.norm(delta))
+                step = 0.45 * float(model.opt.timestep)
+
+                if dist < 0.003:
+                    data.mocap_pos[mocap_id] = target
+                    cycle_state = CycleState.NAV_HOME
+                    key_callback.goal = 3   # будем использовать goal=3 как "домой"
+                else:
+                    data.mocap_pos[mocap_id] = cur + (delta / (dist + 1e-9)) * min(step, dist)
+
+
+            elif cycle_state == CycleState.NAV_HOME:
+                data.ctrl[fingers_id] = GRIP_OPEN
+                if path_idx >= len(path_xy) and len(path_xy) > 0:
+                    cycle_state = CycleState.HOME_DONE
+
+
+            elif cycle_state == CycleState.HOME_DONE:
+                # завершили полный цикл
+                cycle_state = CycleState.DONE
+                key_callback.fix_base = False
+
+
+    
+
 
             # 1) если нажали кнопку — строим новый путь
-            if key_callback.goal in (1, 2):
+            if key_callback.goal in (1, 2, 3):
                 start_xy = data.qpos[:2].copy()
-                goal_xy = (GOAL1[:2] if key_callback.goal == 1 else GOAL2[:2]).copy()
+
+                if key_callback.goal == 1:
+                    goal_xy = GOAL1[:2].copy()
+                elif key_callback.goal == 2:
+                    goal_xy = GOAL2[:2].copy()
+                else:  # 3
+                    goal_xy = HOME_XY.copy()
 
                 planned = planner.plan(start_xy, goal_xy)
                 if planned is None:
