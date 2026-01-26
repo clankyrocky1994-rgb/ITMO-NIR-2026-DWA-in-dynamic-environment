@@ -21,7 +21,7 @@ class RectObstacle:
 
 class AStarGridPlanner:
     """
-    A*.
+    Планировщик пути A*.
    
     """
 
@@ -40,7 +40,7 @@ class AStarGridPlanner:
         self.y_min = float(y_min)
         self.y_max = float(y_max)
 
-        # Размер клетки 
+        # Размер клетки (например 0.25м = 25см)
         self.res = float(resolution)
 
         # Насколько "раздувать" препятствия (чтобы робот не тёрся об них)
@@ -116,7 +116,7 @@ class AStarGridPlanner:
     # ---------- A* поиск пути ----------
 
     def _heuristic(self, a: GridPt, b: GridPt) -> float:
-        # Манхэттенское расстояние 
+        # Манхэттенское расстояние (дёшево и стабильно)
         return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
     def _neighbors4(self, p: GridPt) -> List[GridPt]:
@@ -131,7 +131,7 @@ class AStarGridPlanner:
         if self.grid is None:
             raise RuntimeError("Call build_grid() before planning")
 
-        # Если старт/цель на препятствии 
+        # Если старт/цель на препятствии — сразу не получится
         if not self._in_bounds(start) or not self._in_bounds(goal):
             return None
         if self.grid[start] == 1 or self.grid[goal] == 1:
@@ -165,7 +165,7 @@ class AStarGridPlanner:
                 if self.grid[nxt] == 1:
                     continue
 
-                ng = g + 1.0 
+                ng = g + 1.0  # цена шага (пока просто 1)
                 if ng < gscore.get(nxt, 1e9):
                     gscore[nxt] = ng
                     came_from[nxt] = cur
@@ -195,8 +195,8 @@ class AStarGridPlanner:
 
     def simplify_path(self, path_xy: List[np.ndarray], step: int = 2) -> List[np.ndarray]:
         """
-        Прореживание пути: 
-        
+        Прореживание пути: берём каждую step-ю точку.
+        Чтобы mocap не получал слишком много микроточек.
         """
         if len(path_xy) <= 2:
             return path_xy
@@ -212,6 +212,8 @@ if __name__ == "__main__":
         resolution=0.5,
         inflate=0.3,
     )
+
+    # добавим один "стеллаж" в центре
     planner.add_rect_obstacle(cx=0.0, cy=0.0, hx=0.5, hy=1.5)
 
     grid = planner.build_grid()
@@ -222,9 +224,9 @@ if __name__ == "__main__":
     path = planner.plan(start, goal)
 
     if path is None:
-        print("Path not found")
+        print("❌ Путь не найден")
     else:
-        print(f"✅ Path found: {len(path)}")
+        print(f"✅ Путь найден, точек: {len(path)}")
         for p in path[:5]:
             print(" ", p)
         print(" ...")

@@ -26,7 +26,7 @@
   <worldbody>
     <light pos="0 0 3.0" directional="true"/>
 
-    
+    <!-- Floor -->
     <geom name="floor" size="0 0 0.05" type="plane" material="groundplane"/>
 
     <!-- Mocap target used by the examples (keep this!) -->
@@ -52,6 +52,7 @@
   <joint name="shaft_z" type="slide" axis="0 0 1"  damping="0.2"/>
   <joint name="shaft_ball" type="ball" damping="0.05"/>
 
+  <!-- cylinder: size="radius half_length" -->
   <geom name="shaft_1_geom" type="box"
         size="0.025 0.025 0.11"
         rgba="0.25 0.25 0.25 1"
@@ -60,6 +61,10 @@
 </body>
 
 
+    <!-- =====================================================
+         CABINET 2 (FAR, left side, end of shelves)
+         Simple pedestal
+         ===================================================== -->
 
     <body name="cabinet_far_left" pos="-2.55 6.2 0">
       <geom type="box"
@@ -71,6 +76,25 @@
             size="0.31 0.235 0.015"
             rgba="0.55 0.48 0.38 1"/>
     </body>
+
+    <!-- =========================
+         WAREHOUSE: 8 shelves (2 rows x 4), facing each other
+         Shelf dimensions (meters):
+           depth  = 0.50  (along X)
+           length = 1.80  (along Y)
+           height = 2.20  (along Z)
+
+         Passages:
+           central aisle free width ≈ 1.20 m  (between shelf faces)
+           side gaps (between shelves along Y) ≈ 1.00 m
+         ========================= -->
+
+    <!-- Shelves are boxes: size is half-extents -->
+    <!-- half-depth=0.25, half-length=0.90, half-height=1.10 -->
+    <!-- Place shelf centers at z=1.10 so they stand on the floor -->
+
+    <!-- X centers: ±(aisle/2 + depth/2) = ±(0.60 + 0.25) = ±0.85 -->
+    <!-- Y positions (step = length + gap = 1.80 + 1.00 = 2.80): -4.2, -1.4, 1.4, 4.2 -->
 
     <!-- Left row -->
     <body name="shelf_L1" pos="-0.85 -4.2 1.10">
