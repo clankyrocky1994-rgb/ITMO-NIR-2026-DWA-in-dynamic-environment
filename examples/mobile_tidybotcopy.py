@@ -9,48 +9,31 @@ from loop_rate_limiters import RateLimiter
 import mink
 from mink.contrib.keyboard_teleop import keycodes
 
+# from Astar import AStarGridPlanner
+
 _HERE = Path(__file__).parent
 _XML = _HERE / "stanford_tidybot" / "scene.xml"
 
-from enum import Enum, auto
-
-class State(Enum):
-    GO_TO_PICK = auto()
-    REACH = auto()
-    GRASP = auto()
-    LIFT = auto()
-    GO_TO_PLACE = auto()
-    PLACE = auto()
-    RELEASE = auto()
-    DONE = auto()
-
-def wrap_pi(a: float) -> float:
-    return (a + np.pi) % (2*np.pi) - np.pi
-
-def get_shaft_xyz(model, data) -> np.ndarray:
-    ax = model.joint("shaft_x").qposadr[0]
-    ay = model.joint("shaft_y").qposadr[0]
-    az = model.joint("shaft_z").qposadr[0]
-    geom_id = model.geom("shaft_1_geom").id
-    return data.geom_xpos[geom_id].copy()
-
-def set_mocap_target(model, data, mocap_body_name: str, xyz: np.ndarray, quat=(0, 1, 0, 0)) -> None:
-    mocap_id = model.body(mocap_body_name).mocapid[0]
-    data.mocap_pos[mocap_id] = xyz
-    data.mocap_quat[mocap_id] = np.array(quat, dtype=float)
-
-
+GOAL1 = np.array([2.55, -3.8, 0.62])   # тумбочка-лоток справа (Z подстрой)
+GOAL2 = np.array([-2.55, 6.2, 0.62])   # тумбочка слева (Z подстрой)
 
 @dataclass
 class KeyCallback:
     fix_base: bool = False
     pause: bool = False
+    goal: int = 0  # 0 = ничего, 1/2/3 = пресеты
 
     def __call__(self, key: int) -> None:
         if key == keycodes.KEY_ENTER:
             self.fix_base = not self.fix_base
         elif key == keycodes.KEY_SPACE:
             self.pause = not self.pause
+        elif key == keycodes.KEY_1:
+            self.goal = 1
+        elif key == keycodes.KEY_2:
+            self.goal = 2
+        elif key == keycodes.KEY_3:
+            self.goal = 3
 
 
 if __name__ == "__main__":
@@ -126,6 +109,19 @@ if __name__ == "__main__":
             # Update task target.
             T_wt = mink.SE3.from_mocap_name(model, data, "pinch_site_target")
             end_effector_task.set_target(T_wt)
+            # --- jump mocap target to preset goals by keyboard ---
+            mocap_id = model.body("pinch_site_target").mocapid[0]
+
+            if key_callback.goal == 1:
+                data.mocap_pos[mocap_id] = GOAL1
+                data.mocap_quat[mocap_id] = np.array([0, 1, 0, 0], dtype=float)
+                key_callback.goal = 0  # сброс, чтобы не телепортировало каждый кадр
+
+            elif key_callback.goal == 2:
+                data.mocap_pos[mocap_id] = GOAL2
+                data.mocap_quat[mocap_id] = np.array([0, 1, 0, 0], dtype=float)
+                key_callback.goal = 0
+
 
             # Compute velocity and integrate into the next configuration.
             for i in range(max_iters):

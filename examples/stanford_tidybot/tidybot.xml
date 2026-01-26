@@ -296,7 +296,7 @@
     <position class="small_actuator" name="joint_5" joint="joint_5"/>
     <position class="small_actuator" name="joint_6" joint="joint_6" ctrlrange="-2.0996310901491784 2.0996310901491784"/>
     <position class="small_actuator" name="joint_7" joint="joint_7"/>
-    <general class="2f85" name="fingers_actuator" tendon="split" forcerange="-5 5" ctrlrange="0 255"
+    <general class="2f85" name="fingers_actuator" tendon="split" forcerange="-10 10" ctrlrange="0 255"
       gainprm="0.3137255 0 0" biasprm="0 -100 -10"/>
   </actuator>
   <keyframe>
