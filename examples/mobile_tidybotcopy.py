@@ -13,18 +13,36 @@ from Astar import AStarGridPlanner
 
 from YawPath import YawAligner
 
+from enum import Enum, auto
+
+class CycleState(Enum):
+    IDLE = auto()
+    NAV_TO_PICK = auto()
+    ARM_PREPICK = auto()      # <-- новое (подойти сверху)
+    ARM_DOWN_PICK = auto()
+    CLOSE = auto()
+    ARM_UP = auto()
+    NAV_TO_PLACE = auto()
+    ARM_PREPLACE = auto()     # <-- новое (подойти сверху)
+    ARM_DOWN_PLACE = auto()
+    OPEN = auto()
+    DONE = auto()
+
 _HERE = Path(__file__).parent
 _XML = _HERE / "stanford_tidybot" / "scene.xml"
 
-GOAL1 = np.array([2.55, -5, 0.62])   # тумбочка-лоток справа (Z подстрой)
-GOAL2 = np.array([-2.55, 6.2, 0.62])   # тумбочка слева (Z подстрой)
+GOAL1 = np.array([2.55, -4.5, 0.62])   # тумбочка-лоток справа (Z подстрой)
+GOAL2 = np.array([-2.55, 6, 0.62])   # тумбочка слева (Z подстрой)
+PICK_Z = float() # опускание в лоток 1
+PLACE_Z = float()# опускание в лоток 2
 
 
 @dataclass
 class KeyCallback:
     fix_base: bool = False
     pause: bool = False
-    goal: int = 0  # 0 = ничего, 1/2/3 = пресеты
+    goal: int = 0
+    cycle: bool = False   # <-- добавили
 
     def __call__(self, key: int) -> None:
         if key == keycodes.KEY_ENTER:
@@ -37,6 +55,9 @@ class KeyCallback:
             self.goal = 2
         elif key == keycodes.KEY_3:
             self.goal = 3
+        elif key == keycodes.KEY_4:
+            self.cycle = True
+
 
 planner = AStarGridPlanner(
     x_min=-3.0, x_max=3.0,
@@ -44,16 +65,20 @@ planner = AStarGridPlanner(
     resolution=0.25,   
     inflate=0.25,      
 )
+
+
 # Описание препятсвтвий
+
 shelf_hx, shelf_hy = 0.25, 0.90 
 shelf_xs = [-0.85, 0.85]
-shelf_hx, shelf_hy = 0.28, 0.93 
-shelf_xs = [-0.88, 0.88]
 shelf_ys = [-4.2, -1.4, 1.4, 4.2]
 
 for sx in shelf_xs:
     for sy in shelf_ys:
         planner.add_rect_obstacle(cx=sx, cy=sy, hx=shelf_hx, hy=shelf_hy)
+
+
+
 
 planner.build_grid()
 
@@ -78,6 +103,17 @@ if __name__ == "__main__":
     dof_ids = np.array([model.joint(name).id for name in joint_names])
     actuator_ids = np.array([model.actuator(name).id for name in joint_names])
     joint_th_act = model.actuator("joint_th").id
+
+    fingers_id = model.actuator("fingers_actuator").id
+    GRIP_OPEN = 0
+    GRIP_CLOSED = 255
+
+    cycle_state = CycleState.IDLE
+    hold_counter = 0
+    
+    Z_CARRY = .90          # высота, на которой ты сейчас возишь кубик
+    PICK_Z = float(GOAL1[2]) # опускание в лоток 1
+    PLACE_Z = float(GOAL2[2])# опускание в лоток 2
     
 
 
@@ -132,7 +168,28 @@ if __name__ == "__main__":
 
         # Initialize the mocap target at the end-effector site.
         mink.move_mocap_to_frame(model, data, "pinch_site_target", "pinch_site", "site")
+        # reset позы робота
+        mujoco.mj_resetDataKeyframe(model, data, model.key("home").id)
+        mujoco.mj_forward(model, data)
 
+        configuration.update(data.qpos)
+        posture_task.set_target_from_configuration(configuration)
+
+        # поставить mocap ровно на хват
+        mink.move_mocap_to_frame(model, data, "pinch_site_target", "pinch_site", "site")
+
+        # ещё раз "протащить" кинематику после изменения mocap
+        mujoco.mj_forward(model, data)
+
+        pick_xy = None
+        place_xy = None
+        pick_xy = [2.55, -3.8]
+        Z_PRE = 0.75      # высота "подойти сверху"
+        Z_CARRY = 0.90    # как у тебя
+
+        # и сразу зафиксировать цель IK по этому mocap
+        T_wt = mink.SE3.from_mocap_name(model, data, "pinch_site_target")
+        end_effector_task.set_target(T_wt)
         rate = RateLimiter(frequency=200.0, warn=False)
         while viewer.is_running():
             # Update task target.
@@ -140,6 +197,131 @@ if __name__ == "__main__":
             end_effector_task.set_target(T_wt)
             # ========== A* -> waypoints -> smooth mocap follow ==========
             mocap_id = model.body("pinch_site_target").mocapid[0]
+
+            if key_callback.cycle and cycle_state in (CycleState.IDLE, CycleState.DONE):
+                cycle_state = CycleState.NAV_TO_PICK
+                hold_counter = 0
+                key_callback.cycle = False
+                
+                key_callback.goal = 1
+
+            # ====== FSM core (поверх твоей навигации) ======
+            # 1) Навигация к лотку 1: ждём пока путь закончится
+
+            if cycle_state in (CycleState.ARM_PREPICK, CycleState.ARM_DOWN_PICK, CycleState.CLOSE,
+                            CycleState.ARM_UP, CycleState.ARM_PREPLACE, CycleState.ARM_DOWN_PLACE, CycleState.OPEN):
+                key_callback.fix_base = True
+            else:
+                key_callback.fix_base = False
+
+            if cycle_state == CycleState.NAV_TO_PICK:
+                data.ctrl[fingers_id] = GRIP_OPEN
+                if path_idx >= len(path_xy) and len(path_xy) > 0:
+                    # фиксируем XY там, где реально остановились
+                    cur = data.mocap_pos[mocap_id].copy()
+                    cycle_state = CycleState.ARM_PREPICK
+
+            
+            elif cycle_state == CycleState.ARM_PREPICK:
+                data.ctrl[fingers_id] = GRIP_OPEN
+                cur = data.mocap_pos[mocap_id].copy()
+                target = np.array([pick_xy[0], pick_xy[1], Z_PRE], dtype=float)  # подойти сверху
+                delta = target - cur
+                dist = float(np.linalg.norm(delta))
+                step = 0.45 * float(model.opt.timestep)
+
+                if dist < 0.03:
+                    data.mocap_pos[mocap_id] = target
+                    cycle_state = CycleState.ARM_DOWN_PICK
+                else:
+                    data.mocap_pos[mocap_id] = cur + (delta / (dist + 1e-9)) * min(step, dist)
+
+
+            # 2) Опускаем mocap на PICK_Z (рука тянется вниз)
+            elif cycle_state == CycleState.ARM_DOWN_PICK:
+                data.ctrl[fingers_id] = GRIP_OPEN
+                cur = data.mocap_pos[mocap_id].copy()
+                target = np.array([pick_xy[0], pick_xy[1], 0.44], dtype=float)  # только Z вниз
+                delta = target - cur
+                dist = float(np.linalg.norm(delta))
+                step = 0.30 * float(model.opt.timestep)
+
+                if dist < 0.02:
+                    data.mocap_pos[mocap_id] = target
+                    cycle_state = CycleState.CLOSE
+                    hold_counter = 0
+                else:
+                    data.mocap_pos[mocap_id] = cur + (delta / (dist + 1e-9)) * min(step, dist)
+
+
+            # 3) Закрываем пальцы и держим
+            elif cycle_state == CycleState.CLOSE:
+                data.ctrl[fingers_id] = GRIP_CLOSED
+                hold_counter += 1
+                if hold_counter > 60:     # ~0.3 сек на 200 Гц
+                    cycle_state = CycleState.ARM_UP
+
+            # 4) Поднимаем mocap обратно на Z_CARRY
+            elif cycle_state == CycleState.ARM_UP:
+                data.ctrl[fingers_id] = GRIP_CLOSED
+                cur = data.mocap_pos[mocap_id].copy()
+                target = np.array([pick_xy[0], pick_xy[1], Z_CARRY], dtype=float)
+                delta = target - cur
+                dist = float(np.linalg.norm(delta))
+                step = 0.45 * float(model.opt.timestep)
+
+                if dist < 0.03:
+                    data.mocap_pos[mocap_id] = target
+                    cycle_state = CycleState.NAV_TO_PLACE
+                    # запускаем твой A* к лотку 2:
+                    key_callback.goal = 2
+                else:
+                    data.mocap_pos[mocap_id] = cur + (delta / (dist + 1e-9)) * min(step, dist)
+
+            # 5) Навигация к лотку 2: ждём пока путь закончится
+            elif cycle_state == CycleState.NAV_TO_PLACE:
+                data.ctrl[fingers_id] = GRIP_CLOSED
+                if path_idx >= len(path_xy) and len(path_xy) > 0:
+                    cur = data.mocap_pos[mocap_id].copy()
+                    place_xy = cur[:2].copy()
+                    cycle_state = CycleState.ARM_PREPLACE
+
+            elif cycle_state == CycleState.ARM_PREPLACE:
+                data.ctrl[fingers_id] = GRIP_CLOSED
+                cur = data.mocap_pos[mocap_id].copy()
+                target = np.array([place_xy[0], place_xy[1], Z_PRE], dtype=float)
+                delta = target - cur
+                dist = float(np.linalg.norm(delta))
+                step = 0.45 * float(model.opt.timestep)
+
+                if dist < 0.03:
+                    data.mocap_pos[mocap_id] = target
+                    cycle_state = CycleState.ARM_DOWN_PLACE
+                else:
+                    data.mocap_pos[mocap_id] = cur + (delta / (dist + 1e-9)) * min(step, dist)
+
+
+            # 6) Опускаем mocap на PLACE_Z
+            elif cycle_state == CycleState.ARM_DOWN_PLACE:
+                data.ctrl[fingers_id] = GRIP_CLOSED
+                cur = data.mocap_pos[mocap_id].copy()
+                target = np.array([place_xy[0], place_xy[1], PLACE_Z], dtype=float)
+                delta = target - cur
+                dist = float(np.linalg.norm(delta))
+                step = 0.30 * float(model.opt.timestep)
+
+                if dist < 0.02:
+                    data.mocap_pos[mocap_id] = target
+                    cycle_state = CycleState.OPEN
+                    hold_counter = 0
+                else:
+                    data.mocap_pos[mocap_id] = cur + (delta / (dist + 1e-9)) * min(step, dist)
+            # 7) Открываем пальцы
+            elif cycle_state == CycleState.OPEN:
+                data.ctrl[fingers_id] = GRIP_OPEN
+                hold_counter += 1
+                if hold_counter > 40:
+                    cycle_state = CycleState.DONE
 
             # 1) если нажали кнопку — строим новый путь
             if key_callback.goal in (1, 2):
@@ -168,7 +350,7 @@ if __name__ == "__main__":
                 delta = target - cur
                 dist = float(np.linalg.norm(delta))
 
-                mocap_speed = 0.6  # м/с (плавность)
+                mocap_speed = 2  # м/с (плавность)
                 dt = float(model.opt.timestep)
                 step = mocap_speed * dt
 
