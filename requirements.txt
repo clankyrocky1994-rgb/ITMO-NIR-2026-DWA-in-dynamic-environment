@@ -1,4 +1,10 @@
-numpy
-mujoco
-uv
-git+https://github.com/kevinzakka/mink.git
+# Core simulation
+numpy>=1.26,<3.0
+mujoco>=3.3.6,<4.0.0
+
+# IK / QP solver stack for mink
+qpsolvers[daqp]>=4.3.1,<5.0.0
+typing_extensions>=4.0.0
+
+# Loop frequency control
+loop-rate-limiters>=0.1.0
