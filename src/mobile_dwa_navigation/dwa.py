@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Iterable, Optional
+from typing import Iterable, Optional, TypeAlias
 
 import numpy as np
 
@@ -7,7 +7,12 @@ import numpy as np
 # def wrap_angle(angle: float) -> float:
 #     """Wrap angle to [-pi, pi]."""
 #     return (angle + np.pi) % (2.0 * np.pi) - np.pi
+CircleObstacle: TypeAlias = (
+    tuple[float, float, float]
+    | tuple[float, float, float, float, float]
+)
 
+RectObstacle: TypeAlias = tuple[float, float, float, float]
 
 @dataclass
 class HolonomicDWAConfig:
@@ -68,8 +73,8 @@ class HolonomicDWAPlanner:
         self,
         state: np.ndarray,
         goal_xy: np.ndarray,
-        circle_obstacles: Iterable[tuple[float, float, float]],
-        rect_obstacles: Optional[Iterable[tuple[float, float, float, float]]] = None,
+        circle_obstacles: Iterable[CircleObstacle],
+        rect_obstacles: Optional[Iterable[RectObstacle]] = None,
     ):
         """
         Parameters
@@ -111,6 +116,12 @@ class HolonomicDWAPlanner:
         best_traj = None
         best_info = {}
 
+        # fallback на случай, если ВСЕ траектории считаются collision
+        least_bad_clearance = -float("inf")
+        least_bad_cmd = np.zeros(3, dtype=float)
+        least_bad_traj = None
+        least_bad_info = {}
+
         for vx in vx_range:
             for vy in vy_range:
                 for w in w_range:
@@ -127,11 +138,33 @@ class HolonomicDWAPlanner:
 
                     total_cost = cost_info["total"]
 
+                    # Если траектория collision, обычным победителем она быть не может,
+                    # но запоминаем "наименее плохую" по максимальному clearance.
+                    if cost_info.get("collision", False):
+                        clearance = float(cost_info.get("min_clearance", -float("inf")))
+
+                        if clearance > least_bad_clearance:
+                            least_bad_clearance = clearance
+                            least_bad_cmd = cmd
+                            least_bad_traj = traj
+                            least_bad_info = cost_info
+
+                        continue
+
                     if total_cost < best_cost:
                         best_cost = total_cost
                         best_cmd = cmd
                         best_traj = traj
                         best_info = cost_info
+
+        # Если вообще не нашлось безопасной траектории,
+        # возвращаем наименее плохую, чтобы робот хотя бы пытался выбраться,
+        # а не вставал навсегда с cmd=[0,0,0].
+        if best_traj is None and least_bad_traj is not None:
+            best_cmd = least_bad_cmd
+            best_traj = least_bad_traj
+            best_info = least_bad_info
+
 
         self.last_cmd = best_cmd.copy()
 
@@ -192,8 +225,8 @@ class HolonomicDWAPlanner:
         traj: np.ndarray,
         cmd: np.ndarray,
         goal_xy: np.ndarray,
-        circle_obstacles: list[tuple[float, float, float]],
-        rect_obstacles: list[tuple[float, float, float, float]],
+        circle_obstacles: list[CircleObstacle],
+        rect_obstacles: list[RectObstacle],
     ):
         c = self.cfg
 
@@ -226,7 +259,6 @@ class HolonomicDWAPlanner:
                 "collision": True,
             }
 
-        safe_clearance = max(min_clearance, c.obstacle_clearance_cap)
         obstacle_cost = 1.0 / (min_clearance + 0.02)
         near_collision_cost = 0.0
         if min_clearance < 0.10:
@@ -268,22 +300,48 @@ class HolonomicDWAPlanner:
     def _min_clearance(
         self,
         traj: np.ndarray,
-        circle_obstacles: list[tuple[float, float, float]],
-        rect_obstacles: list[tuple[float, float, float, float]],
+        circle_obstacles: list[CircleObstacle],
+        rect_obstacles: list[RectObstacle],
     ) -> float:
         c = self.cfg
         min_clearance = float("inf")
 
-        for p in traj[:, :2]:
-            # Circular obstacles
-            for ox, oy, radius in circle_obstacles:
+        for i, p in enumerate(traj[:, :2]):
+            future_t = (i + 1) * c.dt
+
+            # Circular obstacles.
+            # Поддерживаем два формата:
+            # (x, y, radius)
+            # (x, y, radius, vx, vy)
+            for obs in circle_obstacles:
+                if len(obs) == 5:
+                    ox = float(obs[0])
+                    oy = float(obs[1])
+                    radius = float(obs[2])
+                    ovx = float(obs[3])
+                    ovy = float(obs[4])
+
+                    ox = ox + ovx * future_t
+                    oy = oy + ovy * future_t
+
+                elif len(obs) == 3:
+                    ox = float(obs[0])
+                    oy = float(obs[1])
+                    radius = float(obs[2])
+
+                else:
+                    raise ValueError(
+                        f"Circle obstacle must be (x, y, r) or (x, y, r, vx, vy), got: {obs}"
+                    )
+
                 center_dist = float(
                     np.linalg.norm(p - np.array([ox, oy], dtype=float))
                 )
+
                 clearance = center_dist - radius - c.robot_radius - c.safety_margin
                 min_clearance = min(min_clearance, clearance)
 
-            # Rectangular obstacles / walls
+            # Rectangular obstacles / walls.
             for rect in rect_obstacles:
                 clearance = self._clearance_to_rect(p, rect)
                 clearance -= c.robot_radius + c.safety_margin
@@ -297,7 +355,7 @@ class HolonomicDWAPlanner:
     @staticmethod
     def _clearance_to_rect(
         point_xy: np.ndarray,
-        rect: tuple[float, float, float, float],
+        rect: RectObstacle,
     ) -> float:
         """
         Signed distance from point to axis-aligned rectangle.
